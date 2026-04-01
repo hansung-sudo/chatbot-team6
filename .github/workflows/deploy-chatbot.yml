@@ -3,11 +3,7 @@ name: Deploy Chatbot Web
 on:
   push:
     branches:
-      - main
-    paths:
-      - "apps/web/chatbot/**"
-      - "scripts/deploy_chatbot.py"
-      - ".github/workflows/deploy-chatbot.yml"
+      - chatbot
   workflow_dispatch:
 
 jobs:
