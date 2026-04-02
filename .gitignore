@@ -104,3 +104,8 @@ yarn-error.log*
 *.zip
 *.7z
 *.rar
+
+
+
+# API Keys and Secrets
+.env
