@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 챗봇</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <!-- 토글 버튼 -->
+        <button class="sidebar-toggle" id="sidebarToggle" title="사이드바 열기/닫기">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M15 18l-6-6 6-6"></path>
+            </svg>
+        </button>
+        
+        <!-- 사이드바 -->
+        <div class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <h2>대화</h2>
+                <div class="sidebar-header-buttons">
+                    <button class="new-chat-btn" id="newChatBtn" title="새 대화 시작 (Ctrl+N)">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 5v14M5 12h14"></path>
+                    </svg>
+                    </button>
+                    <button class="close-sidebar-btn" id="closeSidebarBtn" title="사이드바 닫기">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M9 18l6-6-6-6"></path>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+            <div class="conversation-list" id="conversationList">
+                <!-- 대화 목록 여기에 생성 -->
+            </div>
+        </div>
+
+        <div class="chatbot-wrapper">
+            <!-- 헤더 -->
+            <div class="chat-header">
+                <h1>AI 챗봇</h1>
+                <p class="subtitle" id="chatTitle">새로운 대화</p>
+            </div>
+
+            <!-- 채팅 영역 -->
+            <div class="chat-messages" id="chatMessages">
+                <div class="message bot">
+                    <div class="message-content">안녕하세요! 무엇을 도와드릴까요?</div>
+                </div>
+            </div>
+
+            <!-- 입력 영역 -->
+            <div class="chat-input-area">
+                <form id="chatForm" class="chat-form">
+                    <input
+                        type="text"
+                        id="messageInput"
+                        class="message-input"
+                        placeholder="메시지를 입력하세요..."
+                        autocomplete="off"
+                    />
+                    <button type="submit" class="send-btn" id="sendBtn">
+                        <span>전송</span>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"></path>
+                        </svg>
+                    </button>
+                </form>
+                <div class="loading" id="loadingIndicator"></div>
+            </div>
+
+            <!-- 설정 (선택사항) -->
+            <div class="chat-settings">
+                <label for="apiUrlInput">API URL:</label>
+                <input type="text" id="apiUrlInput" placeholder="http://localhost:8000/chat" />
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
