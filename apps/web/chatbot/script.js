@@ -267,7 +267,7 @@ async function sendMessageToAPI(message) {
     loadingIndicator.classList.add('active');
 
     try {
-        // 🔧 API 요청 형식을 수정하세요 (필요시)
+        // API 요청 형식
         const response = await fetch(apiUrl, {
             method: 'POST',
             headers: {
@@ -275,7 +275,6 @@ async function sendMessageToAPI(message) {
             },
             body: JSON.stringify({
                 message: message,
-                // 필요시 추가 필드 작성
             }),
         });
 
@@ -285,8 +284,7 @@ async function sendMessageToAPI(message) {
 
         const data = await response.json();
         
-        // 🔧 응답 형식을 수정하세요 (필요시)
-        // 예: data.response, data.text, data.result 등
+        // 응답 형식
         const botResponse = data.response || data.text || data.message || '응답을 받을 수 없습니다.';
         
         addMessage(botResponse, 'bot');
