@@ -52,38 +52,36 @@ uvicorn apps.api.chat_api:app --reload
 ```
 서버가 http://127.0.0.1:8000 에서 시작됩니다. 브라우저에서 http://127.0.0.1:8000/docs 로 Swagger UI에 접근하여 API를 테스트할 수 있습니다.
 
-#### API 엔드포인트
-- `POST /chat/message`: 메시지를 수동으로 데이터베이스에 저장.
+#### API 엔드포인트 (저장 전용)
+- `POST /chat/save`: 프론트엔드에서 받은 사용자 질문과 AI 답변을 DB에 저장.
 - `GET /chat/messages/{conversation_id}`: 특정 대화의 메시지 조회.
-- `GET /conversations`: 대화 목록 조회 (user_id 쿼리 파라미터로 필터링 가능).
-- `POST /chat`: 사용자 메시지를 받아 AI 응답을 생성하고 데이터베이스에 저장 (맥락 유지).
 - `GET /health`: API 상태 확인.
 
 #### API 사용 예시 (JavaScript)
 ```javascript
-// 채팅 요청
-fetch('http://127.0.0.1:8000/chat', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ conversation_id: 1, user_message: '안녕하세요!' })
+// 저장 요청 (AI 답변은 프론트 또는 다른 백엔드에서 생성된 값을 전달)
+fetch('http://127.0.0.1:8000/chat/save', {
+   method: 'POST',
+   headers: { 'Content-Type': 'application/json' },
+   body: JSON.stringify({
+      conversation_id: 1,
+      user_message: '안녕하세요!',
+      ai_response: '안녕하세요. 무엇을 도와드릴까요?'
+   })
 }).then(res => res.json()).then(data => console.log(data));
 ```
 
 ## 기능
 
-- OpenAI의 GPT 모델을 사용한 자연어 응답
-- 이전 대화 내용 기억 (ConversationBufferMemory 사용)
-- 대화 내역 데이터베이스 저장 (SQLite)
+- 사용자 질문/AI 답변 대화 내역 저장 (SQLite)
 - 간단한 명령줄 인터페이스 및 웹 API
 - 프론트엔드 연동 가능
 
 ## 문제 해결
 
-- **API 키 오류**: `.env` 파일에 올바른 OPENAI_API_KEY가 설정되어 있는지 확인하세요.
 - **데이터베이스 오류**: `python database.py`를 먼저 실행하세요.
 - **포트 충돌**: uvicorn 실행 시 `--port 8001`로 포트 변경.
 - **모듈 오류**: 모든 의존성이 설치되었는지 확인하세요 (`pip install -r requirements.txt`).
-- **네트워크 오류**: 인터넷 연결과 OpenAI API 접근 권한을 확인하세요.
 
 ## 라이선스
 
