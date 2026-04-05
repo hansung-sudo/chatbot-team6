@@ -4,6 +4,10 @@ from langchain.chat_models import ChatOpenAI
 from langchain.memory import ConversationBufferMemory
 from langchain.chains import ConversationChain
 
+from fastapi import FastAPI
+from pydantic import BaseModel
+from fastapi.middleware.cors import CORSMiddleware
+
 # 환경 변수 로드
 load_dotenv()
 
@@ -39,6 +43,32 @@ def main():
         # 대화 예측
         response = conversation.predict(input=user_input)
         print(f"Bot: {response}")
+
+app = FastAPI()
+
+# CORS 설정 (모든 도메인 허용)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+#질문 데이터 형태 지정
+class ChatRequest(BaseModel):
+    question: str
+
+@app.get("/")
+def read_root():
+    return {"message": "챗봇 API에 오신 것을 환영합니다!"}
+
+@app.post("/chat")
+def chat(request: ChatRequest):
+    user_input = request.question
+    response = conversation.predict(input=user_input)
+    return {"response": response}
+
 
 if __name__ == "__main__":
     main()
