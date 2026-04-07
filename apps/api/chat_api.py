@@ -15,8 +15,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 데이터베이스 경로 (기존 설정 유지)
-DB_PATH = os.path.join(os.path.dirname(__file__), '..', '..', 'chatbot.db')
+# 데이터베이스 경로: 환경변수로 오버라이드 가능
+DEFAULT_DB_PATH = os.path.join(os.path.dirname(__file__), '..', '..', 'chatbot.db')
+DB_PATH = os.getenv("DB_PATH", DEFAULT_DB_PATH)
+
+
+def ensure_db_directory() -> None:
+    db_dir = os.path.dirname(DB_PATH)
+    if db_dir:
+        os.makedirs(db_dir, exist_ok=True)
+
+
+ensure_db_directory()
 
 # --- Pydantic 모델 (데이터 규격) ---
 
