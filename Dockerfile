@@ -15,4 +15,4 @@ COPY . .
 
 EXPOSE 8000
 
-CMD ["sh", "-c", "test -f chatbot.db || python database.py && exec uvicorn apps.api.chat_api:app --host 0.0.0.0 --port ${PORT:-8000}"]
+CMD ["sh", "-c", "python -c \"from database import create_database; create_database()\" && exec uvicorn apps.api.chat_api:app --host 0.0.0.0 --port ${PORT:-8000}"]
