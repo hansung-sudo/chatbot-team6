@@ -3,6 +3,17 @@
 FastAPI, SQLite, 그리고 OpenAI를 사용하는 챗봇 서비스입니다.  
 웹 UI와 API를 하나의 Docker 이미지에서 함께 제공하고, 대화 내역은 SQLite에 저장합니다.
 
+## 기술 스택
+
+- `Python 3.12`
+- `FastAPI`, `Uvicorn`
+- `LangChain`, `langchain-openai`, `langchain-community`
+- `OpenAI API`
+- `SQLite`
+- `HTML`, `CSS`, `JavaScript`
+- `Docker`, `Docker Compose`
+- `GitHub Actions`
+
 ## 아키텍처
 
 ```text
@@ -24,6 +35,8 @@ Browser -> FastAPI server
 - 대화 목록, 메시지 저장/조회 가능
 - 서버 `.env` 기반 OpenAI 응답 생성
 - 로컬 실행과 배포 실행을 같은 이미지로 처리
+- 서비스: `https://chatbot.yeoun.org/`
+- API 문서: `https://chatbot.yeoun.org/docs`
 
 ## 빠른 시작
 
@@ -49,7 +62,7 @@ docker compose up -d --build
 
 ## 배포
 
-- 배포용 설정은 `docker-compose.prod.yml`을 사용합니다.
+- 배포용 설정은 `docker-compose.prod.yml`을 사용하여 CI/CD합니다.
 - SQLite 데이터는 `chatbot-data` 볼륨에 유지됩니다.
 
 ## 접속 경로
