@@ -1,11 +1,10 @@
 name: CD Deploy
 
 on:
-  workflow_run:
-    workflows:
-      - CI Build
-    types:
-      - completed
+  push:
+    branches:
+      - "infra/#6-cicd"
+      - develop
   workflow_dispatch:
     inputs:
       image_tag:
@@ -22,10 +21,8 @@ jobs:
     if: |
       github.event_name == 'workflow_dispatch' ||
       (
-        github.event_name == 'workflow_run' &&
-        github.event.workflow_run.conclusion == 'success' &&
-        github.event.workflow_run.event == 'push' &&
-        contains(fromJson('["develop","infra/#6-cicd"]'), github.event.workflow_run.head_branch)
+        github.event_name == 'push' &&
+        contains(fromJson('["develop","infra/#6-cicd"]'), github.ref_name)
       )
     runs-on: ubuntu-latest
     permissions:
@@ -35,7 +32,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+          ref: ${{ github.sha }}
 
       - name: Set Deploy Image
         id: image
@@ -44,8 +41,8 @@ jobs:
           IMAGE_REPO="ghcr.io/${GITHUB_REPOSITORY,,}"
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ inputs.image_tag }}" ]; then
             IMAGE_TAG="${{ inputs.image_tag }}"
-          elif [ "${{ github.event_name }}" = "workflow_run" ]; then
-            IMAGE_TAG="${{ github.event.workflow_run.head_sha }}"
+          elif [ "${{ github.event_name }}" = "push" ]; then
+            IMAGE_TAG="${{ github.sha }}"
           else
             IMAGE_TAG="latest"
           fi
@@ -53,6 +50,25 @@ jobs:
           echo "repo=${IMAGE_REPO}" >> "$GITHUB_OUTPUT"
           echo "tag=${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
           echo "ref=${IMAGE_REPO}:${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for Image in GHCR
+        if: github.event_name != 'workflow_dispatch'
+        shell: bash
+        run: |
+          echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io \
+            -u "${{ secrets.GHCR_USERNAME }}" --password-stdin
+
+          for i in $(seq 1 40); do
+            if docker manifest inspect "${{ steps.image.outputs.ref }}" >/dev/null 2>&1; then
+              echo "Image found: ${{ steps.image.outputs.ref }}"
+              exit 0
+            fi
+            echo "Waiting for image: ${{ steps.image.outputs.ref }} (attempt $i/40)"
+            sleep 10
+          done
+
+          echo "Timed out waiting for image: ${{ steps.image.outputs.ref }}"
+          exit 1
 
       - name: Render Compose for Deploy
         shell: bash
