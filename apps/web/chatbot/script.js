@@ -1,5 +1,10 @@
 // 기본 설정
-const DEFAULT_STORAGE_API_BASE_URL = 'http://localhost:8000';
+const DEFAULT_STORAGE_API_BASE_URL = (() => {
+    if (typeof window !== 'undefined' && window.location && window.location.origin && window.location.origin !== 'null') {
+        return window.location.origin;
+    }
+    return 'http://localhost:8000';
+})();
 
 // DOM 요소들
 const chatMessages = document.getElementById('chatMessages');
@@ -43,6 +48,7 @@ async function resolveStorageApiBaseUrl(preferredUrl) {
     const candidates = [
         normalizeBaseUrl(preferredUrl),
         normalizeBaseUrl(DEFAULT_STORAGE_API_BASE_URL),
+        normalizeBaseUrl(typeof window !== 'undefined' ? window.location?.origin : ''),
         'http://127.0.0.1:8000',
         'http://localhost:8000',
         'http://127.0.0.1:8004',

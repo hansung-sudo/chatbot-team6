@@ -1,5 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import sqlite3
 import os
@@ -215,3 +216,8 @@ def retrieve_messages(conversation_id: int):
 @app.get("/health", summary="서버 상태 체크")
 def health_check():
     return {"status": "OK", "mode": "storage-only"}
+
+WEB_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "web", "chatbot"))
+
+if os.path.isdir(WEB_DIR):
+    app.mount("/", StaticFiles(directory=WEB_DIR, html=True), name="web")
