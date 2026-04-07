@@ -36,12 +36,30 @@ def insert_sample_data():
     # 샘플 사용자 삽입
     cursor.execute("INSERT OR IGNORE INTO Users (username, email) VALUES (?, ?)", ('test_user', 'test@example.com'))
 
-    # 샘플 대화 삽입
-    cursor.execute("INSERT INTO Conversations (user_id, session_id) VALUES (?, ?)", (1, 'session_001'))
+    # 샘플 대화 삽입 (중복 실행 안전)
+    cursor.execute(
+        "INSERT OR IGNORE INTO Conversations (user_id, session_id) VALUES (?, ?)",
+        (1, 'session_001')
+    )
+    cursor.execute("SELECT conversation_id FROM Conversations WHERE session_id = ?", ('session_001',))
+    row = cursor.fetchone()
+    if row is None:
+        conn.close()
+        raise RuntimeError("샘플 대화를 찾을 수 없습니다.")
+    conversation_id = row[0]
 
-    # 샘플 메시지 삽입
-    cursor.execute("INSERT INTO Messages (conversation_id, sender, content) VALUES (?, ?, ?)", (1, 'user', '안녕하세요!'))
-    cursor.execute("INSERT INTO Messages (conversation_id, sender, content) VALUES (?, ?, ?)", (1, 'bot', '안녕하세요! 무엇을 도와드릴까요?'))
+    # 샘플 메시지 삽입 (초기 1회만)
+    cursor.execute("SELECT COUNT(*) FROM Messages WHERE conversation_id = ?", (conversation_id,))
+    message_count = cursor.fetchone()[0]
+    if message_count == 0:
+        cursor.execute(
+            "INSERT INTO Messages (conversation_id, sender, content) VALUES (?, ?, ?)",
+            (conversation_id, 'user', '안녕하세요!')
+        )
+        cursor.execute(
+            "INSERT INTO Messages (conversation_id, sender, content) VALUES (?, ?, ?)",
+            (conversation_id, 'bot', '안녕하세요! 무엇을 도와드릴까요?')
+        )
 
     conn.commit()
     conn.close()
@@ -65,9 +83,5 @@ def query_messages(conversation_id):
 
 if __name__ == "__main__":
     create_database()
-    insert_sample_data()
-
-    # 조회 예시
-    messages = query_messages(1)
-    for msg in messages:
-        print(f"{msg[0]}: {msg[1]} ({msg[2]})")
+    if os.getenv("INSERT_SAMPLE_DATA", "false").lower() in {"1", "true", "yes"}:
+        insert_sample_data()

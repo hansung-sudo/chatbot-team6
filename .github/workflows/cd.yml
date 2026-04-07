@@ -42,8 +42,10 @@ jobs:
         shell: bash
         run: |
           IMAGE_REPO="ghcr.io/${GITHUB_REPOSITORY,,}"
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ inputs.image_tag }}" ]; then
             IMAGE_TAG="${{ inputs.image_tag }}"
+          elif [ "${{ github.event_name }}" = "workflow_run" ]; then
+            IMAGE_TAG="${{ github.event.workflow_run.head_sha }}"
           else
             IMAGE_TAG="latest"
           fi
@@ -56,7 +58,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p .deploy
-          sed "s|ghcr.io/YOUR_ORG/YOUR_REPO:latest|${{ steps.image.outputs.ref }}|g" \
+          sed -E "s|^([[:space:]]*image:).*$|\\1 ${{ steps.image.outputs.ref }}|g" \
             docker-compose.prod.yml > .deploy/docker-compose.prod.yml
 
       - name: Render .env for Deploy
