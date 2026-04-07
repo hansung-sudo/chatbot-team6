@@ -1,0 +1,112 @@
+name: CD Deploy
+
+on:
+  workflow_run:
+    workflows:
+      - CI Build
+    types:
+      - completed
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "GHCR image tag to deploy"
+        required: false
+        default: "latest"
+
+concurrency:
+  group: cd-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event_name == 'workflow_run' &&
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push' &&
+        contains(fromJson('["develop","infra/#6-cicd"]'), github.event.workflow_run.head_branch)
+      )
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Set Deploy Image
+        id: image
+        shell: bash
+        run: |
+          IMAGE_REPO="ghcr.io/${GITHUB_REPOSITORY,,}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            IMAGE_TAG="${{ inputs.image_tag }}"
+          else
+            IMAGE_TAG="latest"
+          fi
+
+          echo "repo=${IMAGE_REPO}" >> "$GITHUB_OUTPUT"
+          echo "tag=${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
+          echo "ref=${IMAGE_REPO}:${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Render Compose for Deploy
+        shell: bash
+        run: |
+          mkdir -p .deploy
+          sed "s|ghcr.io/YOUR_ORG/YOUR_REPO:latest|${{ steps.image.outputs.ref }}|g" \
+            docker-compose.prod.yml > .deploy/docker-compose.prod.yml
+
+      - name: Render .env for Deploy
+        shell: bash
+        run: |
+          if [ -z "${{ secrets.DEPLOY_ENV_FILE }}" ]; then
+            echo "Missing required secret: DEPLOY_ENV_FILE"
+            exit 1
+          fi
+          printf '%s' "${{ secrets.DEPLOY_ENV_FILE }}" > .deploy/.env
+
+      - name: Upload Deploy Files
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ secrets.DEPLOY_PORT || '22' }}
+          source: ".deploy/docker-compose.prod.yml,.deploy/.env"
+          target: ${{ secrets.DEPLOY_PATH }}
+          strip_components: 1
+
+      - name: Deploy on Remote Server
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ secrets.DEPLOY_PORT || '22' }}
+          script: |
+            set -e
+            cd "${{ secrets.DEPLOY_PATH }}"
+
+            if [ ! -f .env ]; then
+              echo "Missing .env on remote server after upload."
+              exit 1
+            fi
+
+            if docker compose version >/dev/null 2>&1; then
+              COMPOSE_CMD="docker compose"
+            elif docker-compose version >/dev/null 2>&1; then
+              COMPOSE_CMD="docker-compose"
+            else
+              echo "docker compose or docker-compose is required on remote server."
+              exit 1
+            fi
+
+            echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io \
+              -u "${{ secrets.GHCR_USERNAME }}" --password-stdin
+
+            ${COMPOSE_CMD} -f docker-compose.prod.yml pull
+            ${COMPOSE_CMD} -f docker-compose.prod.yml up -d --remove-orphans
+            ${COMPOSE_CMD} -f docker-compose.prod.yml ps

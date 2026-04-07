@@ -1,10 +1,10 @@
 services:
   chatbot:
-    image: ghcr.io/YOUR_ORG/YOUR_REPO:latest
+    image: ghcr.io/hansung-sudo/chatbot-team6:latest
     container_name: chatbot
     restart: unless-stopped
     ports:
-      - "8000:8000"
+      - "8001:8000"
     env_file:
       - .env
     environment:
