@@ -116,12 +116,42 @@ def get_conversation_messages_for_ai(conversation_id: int):
         messages.append({"role": role, "content": content})
     return messages
 
-def generate_ai_reply_from_env(conversation_id: int, latest_user_message: str) -> str:
+def get_llm_provider() -> str:
+    provider = os.getenv("LLM_PROVIDER", "").strip().lower()
+    if provider:
+        if provider not in {"openai", "ollama"}:
+            raise HTTPException(status_code=500, detail="LLM_PROVIDER는 openai 또는 ollama여야 합니다.")
+        return provider
+
+    if os.getenv("OLLAMA_BASE_URL", "").strip() or os.getenv("OLLAMA_MODEL", "").strip():
+        return "ollama"
+
+    return "openai"
+
+def build_llm_client(provider: str) -> tuple[OpenAI, str]:
+    if provider == "ollama":
+        base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434").strip().rstrip("/")
+        if not base_url.endswith("/v1"):
+            base_url = f"{base_url}/v1"
+        model_name = os.getenv("OLLAMA_MODEL", "").strip() or os.getenv("MODEL_NAME", "").strip() or "llama3.1"
+        # Ollama의 OpenAI 호환 엔드포인트는 인증키 없이도 동작하지만,
+        # OpenAI SDK는 api_key 인자를 요구하므로 더미 값을 사용합니다.
+        client = OpenAI(api_key=os.getenv("OLLAMA_API_KEY", "ollama"), base_url=base_url)
+        return client, model_name
+
     api_key = os.getenv("OPENAI_API_KEY", "").strip()
     if not api_key:
         raise HTTPException(status_code=500, detail="서버에 OPENAI_API_KEY가 설정되지 않았습니다.")
 
+    base_url = os.getenv("OPENAI_BASE_URL", "").strip()
     model_name = os.getenv("MODEL_NAME", "gpt-4o-mini").strip() or "gpt-4o-mini"
+    client_kwargs = {"api_key": api_key}
+    if base_url:
+        client_kwargs["base_url"] = base_url.rstrip("/")
+    client = OpenAI(**client_kwargs)
+    return client, model_name
+
+def generate_ai_reply_from_env(conversation_id: int, latest_user_message: str) -> str:
     history = get_conversation_messages_for_ai(conversation_id)
     latest_user_message = (latest_user_message or "").strip()
 
@@ -132,7 +162,8 @@ def generate_ai_reply_from_env(conversation_id: int, latest_user_message: str) -
     if not history:
         raise HTTPException(status_code=400, detail="대화 이력이 없어 AI 응답을 생성할 수 없습니다.")
 
-    client = OpenAI(api_key=api_key)
+    provider = get_llm_provider()
+    client, model_name = build_llm_client(provider)
     response = client.chat.completions.create(
         model=model_name,
         messages=[
@@ -284,7 +315,7 @@ def retrieve_messages(conversation_id: int):
 
 @app.get("/health", summary="서버 상태 체크")
 def health_check():
-    return {"status": "OK", "mode": "storage-only"}
+    return {"status": "OK", "mode": get_llm_provider()}
 
 WEB_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "web", "chatbot"))
 
