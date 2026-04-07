@@ -70,33 +70,6 @@ jobs:
           echo "Timed out waiting for image: ${{ steps.image.outputs.ref }}"
           exit 1
 
-      - name: Render Compose for Deploy
-        shell: bash
-        run: |
-          mkdir -p .deploy
-          sed -E "s|^([[:space:]]*image:).*$|\\1 ${{ steps.image.outputs.ref }}|g" \
-            docker-compose.prod.yml > .deploy/docker-compose.prod.yml
-
-      - name: Render .env for Deploy
-        shell: bash
-        run: |
-          if [ -z "${{ secrets.DEPLOY_ENV_FILE }}" ]; then
-            echo "Missing required secret: DEPLOY_ENV_FILE"
-            exit 1
-          fi
-          printf '%s' "${{ secrets.DEPLOY_ENV_FILE }}" > .deploy/.env
-
-      - name: Upload Deploy Files
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
-          key: ${{ secrets.DEPLOY_SSH_KEY }}
-          port: ${{ secrets.DEPLOY_PORT || '22' }}
-          source: ".deploy/docker-compose.prod.yml,.deploy/.env"
-          target: ${{ secrets.DEPLOY_PATH }}
-          strip_components: 1
-
       - name: Deploy on Remote Server
         uses: appleboy/ssh-action@v1.2.0
         with:
@@ -106,12 +79,38 @@ jobs:
           port: ${{ secrets.DEPLOY_PORT || '22' }}
           script: |
             set -e
-            cd "${{ secrets.DEPLOY_PATH }}"
 
-            if [ ! -f .env ]; then
-              echo "Missing .env on remote server after upload."
+            if [ -z "${{ secrets.DEPLOY_ENV_FILE }}" ]; then
+              echo "Missing required secret: DEPLOY_ENV_FILE"
               exit 1
             fi
+
+            mkdir -p "${{ secrets.DEPLOY_PATH }}"
+            cd "${{ secrets.DEPLOY_PATH }}"
+
+            cat > docker-compose.prod.yml <<'EOF'
+            services:
+              chatbot:
+                image: ${{ steps.image.outputs.ref }}
+                container_name: chatbot
+                restart: unless-stopped
+                ports:
+                  - "8001:8000"
+                env_file:
+                  - .env
+                environment:
+                  DB_PATH: /data/chatbot.db
+                volumes:
+                  - chatbot-data:/data
+                pull_policy: always
+
+            volumes:
+              chatbot-data:
+            EOF
+
+            cat > .env <<'EOF'
+            ${{ secrets.DEPLOY_ENV_FILE }}
+            EOF
 
             if docker compose version >/dev/null 2>&1; then
               COMPOSE_CMD="docker compose"
