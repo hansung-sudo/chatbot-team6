@@ -2,6 +2,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from openai import OpenAI
 import sqlite3
 import os
 import uuid
@@ -45,6 +46,10 @@ class MessageRequest(BaseModel):
 class ConversationCreateRequest(BaseModel):
     user_id: int | None = None
     session_id: str | None = None
+
+class ChatReplyRequest(BaseModel):
+    conversation_id: int
+    user_message: str
 
 # --- 데이터베이스 유틸리티 함수 ---
 
@@ -93,6 +98,56 @@ def save_message(conversation_id: int, sender: str, content: str, message_type: 
     conn.commit()
     conn.close()
 
+def get_conversation_messages_for_ai(conversation_id: int):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT sender, content
+        FROM Messages
+        WHERE conversation_id = ?
+        ORDER BY timestamp ASC, message_id ASC
+    """, (conversation_id,))
+    rows = cursor.fetchall()
+    conn.close()
+
+    messages = []
+    for sender, content in rows:
+        role = "assistant" if sender == "bot" else "user"
+        messages.append({"role": role, "content": content})
+    return messages
+
+def generate_ai_reply_from_env(conversation_id: int, latest_user_message: str) -> str:
+    api_key = os.getenv("OPENAI_API_KEY", "").strip()
+    if not api_key:
+        raise HTTPException(status_code=500, detail="서버에 OPENAI_API_KEY가 설정되지 않았습니다.")
+
+    model_name = os.getenv("MODEL_NAME", "gpt-4o-mini").strip() or "gpt-4o-mini"
+    history = get_conversation_messages_for_ai(conversation_id)
+    latest_user_message = (latest_user_message or "").strip()
+
+    if latest_user_message:
+        if not history or history[-1].get("role") != "user" or history[-1].get("content") != latest_user_message:
+            history.append({"role": "user", "content": latest_user_message})
+
+    if not history:
+        raise HTTPException(status_code=400, detail="대화 이력이 없어 AI 응답을 생성할 수 없습니다.")
+
+    client = OpenAI(api_key=api_key)
+    response = client.chat.completions.create(
+        model=model_name,
+        messages=[
+            {
+                "role": "system",
+                "content": "You are a helpful assistant. Reply in Korean unless the user requests another language.",
+            },
+            *history,
+        ],
+    )
+    reply = (response.choices[0].message.content or "").strip() if response.choices else ""
+    if not reply:
+        raise HTTPException(status_code=502, detail="OpenAI 응답이 비어 있습니다.")
+    return reply
+
 # --- API 엔드포인트 ---
 
 @app.post("/chat/save", summary="대화 내역 세트 저장")
@@ -129,6 +184,20 @@ def save_single_message(request: MessageRequest):
         return {"status": "success", "message": "메시지가 저장되었습니다."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"메시지 저장 중 오류 발생: {str(e)}")
+
+@app.post("/chat/reply", summary="AI 응답 생성")
+def chat_reply(request: ChatReplyRequest):
+    """DB 대화 이력과 서버 .env 키를 사용해 AI 응답을 생성합니다."""
+    if not conversation_exists(request.conversation_id):
+        raise HTTPException(status_code=404, detail="conversation_id가 존재하지 않습니다.")
+
+    try:
+        reply = generate_ai_reply_from_env(request.conversation_id, request.user_message)
+        return {"reply": reply}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"AI 응답 생성 중 오류 발생: {str(e)}")
 
 @app.get("/conversations", summary="대화 목록 조회")
 def get_conversations():

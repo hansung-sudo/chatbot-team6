@@ -12,7 +12,6 @@ const chatForm = document.getElementById('chatForm');
 const messageInput = document.getElementById('messageInput');
 const sendBtn = document.getElementById('sendBtn');
 const loadingIndicator = document.getElementById('loadingIndicator');
-const apiKeyInput = document.getElementById('apiKeyInput');
 const storageApiBaseInput = document.getElementById('storageApiBaseInput');
 const newChatBtn = document.getElementById('newChatBtn');
 const conversationList = document.getElementById('conversationList');
@@ -25,13 +24,9 @@ const chatbotWrapper = document.querySelector('.chatbot-wrapper');
 // 상태 관리
 let isLoading = false;
 let storageApiBaseUrl = DEFAULT_STORAGE_API_BASE_URL;
-let openAiApiKey = '';
 let currentConversationId = null;
 let conversations = []; // [{ conversation_id, title, start_time, message_count }]
 let sidebarOpen = false;
-
-const OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions';
-const OPENAI_MODEL = 'gpt-4o-mini';
 
 function normalizeBaseUrl(url) {
     return (url || '').trim().replace(/\/+$/, '');
@@ -86,7 +81,6 @@ function closeSidebar() {
 
 function saveSettings() {
     localStorage.setItem('chatbot_storage_api_base_url', storageApiBaseUrl);
-    localStorage.setItem('chatbot_openai_api_key', openAiApiKey);
 }
 
 function scrollToBottom() {
@@ -263,39 +257,24 @@ async function saveSingleMessageToDB(conversationId, sender, content, messageTyp
 }
 
 async function generateAiReply(conversationId, userMessage) {
-    const apiKey = (apiKeyInput.value || openAiApiKey || '').trim();
-    if (!apiKey) {
-        throw new Error('OpenAI API Key를 입력해주세요.');
-    }
-
-    const history = await buildConversationHistoryForAI(conversationId, userMessage);
-    const messages = [
-        {
-            role: 'system',
-            content: 'You are a helpful assistant. Reply in Korean unless the user requests another language.',
-        },
-        ...history,
-    ];
-
-    const response = await fetch(OPENAI_API_URL, {
+    const response = await fetch(`${storageApiBaseUrl}/chat/reply`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${apiKey}`,
         },
         body: JSON.stringify({
-            model: OPENAI_MODEL,
-            messages,
+            conversation_id: conversationId,
+            user_message: userMessage,
         }),
     });
 
     if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`OpenAI 호출 실패: ${response.status} ${errorText}`);
+        throw new Error(`AI 응답 생성 실패: ${response.status} ${errorText}`);
     }
 
     const data = await response.json();
-    const answer = data?.choices?.[0]?.message?.content?.trim();
+    const answer = data?.reply?.trim();
     if (!answer) {
         throw new Error('AI 응답이 비어 있습니다.');
     }
@@ -353,13 +332,10 @@ async function refreshConversationList() {
 
 window.addEventListener('DOMContentLoaded', async () => {
     const savedStorageApiBaseUrl = localStorage.getItem('chatbot_storage_api_base_url');
-    const savedOpenAiApiKey = localStorage.getItem('chatbot_openai_api_key');
 
     storageApiBaseUrl = normalizeBaseUrl(savedStorageApiBaseUrl || DEFAULT_STORAGE_API_BASE_URL);
-    openAiApiKey = (savedOpenAiApiKey || '').trim();
 
     storageApiBaseInput.value = storageApiBaseUrl;
-    apiKeyInput.value = openAiApiKey;
 
     sidebarOpen = localStorage.getItem('chatbot_sidebar_open') === 'true';
     if (sidebarOpen) {
@@ -389,12 +365,6 @@ window.addEventListener('DOMContentLoaded', async () => {
 storageApiBaseInput.addEventListener('change', (e) => {
     storageApiBaseUrl = normalizeBaseUrl(e.target.value || DEFAULT_STORAGE_API_BASE_URL);
     storageApiBaseInput.value = storageApiBaseUrl;
-    saveSettings();
-});
-
-apiKeyInput.addEventListener('change', (e) => {
-    openAiApiKey = (e.target.value || '').trim();
-    apiKeyInput.value = openAiApiKey;
     saveSettings();
 });
 
