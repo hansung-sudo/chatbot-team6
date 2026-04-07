@@ -12,6 +12,3 @@ services:
       DB_PATH: /data/chatbot.db
     volumes:
       - ./chatbot-data:/data
-
-volumes:
-  chatbot-data:
