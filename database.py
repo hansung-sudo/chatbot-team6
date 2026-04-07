@@ -1,11 +1,19 @@
 import sqlite3
 import os
 
-# 데이터베이스 파일 경로 (프로젝트 루트에 저장)
-DB_PATH = os.path.join(os.path.dirname(__file__), 'chatbot.db')
+# 데이터베이스 파일 경로: 환경변수로 오버라이드 가능
+DEFAULT_DB_PATH = os.path.join(os.path.dirname(__file__), 'chatbot.db')
+DB_PATH = os.getenv('DB_PATH', DEFAULT_DB_PATH)
+
+
+def ensure_db_directory():
+    db_dir = os.path.dirname(DB_PATH)
+    if db_dir:
+        os.makedirs(db_dir, exist_ok=True)
 
 def create_database():
     """데이터베이스 및 테이블 생성"""
+    ensure_db_directory()
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
@@ -21,6 +29,7 @@ def create_database():
 
 def insert_sample_data():
     """샘플 데이터 삽입 예시"""
+    ensure_db_directory()
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
@@ -40,6 +49,7 @@ def insert_sample_data():
 
 def query_messages(conversation_id):
     """특정 대화의 메시지 조회 예시"""
+    ensure_db_directory()
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
