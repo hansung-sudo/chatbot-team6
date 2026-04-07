@@ -24,7 +24,7 @@ jobs:
       github.event_name == 'workflow_dispatch' ||
       (
         github.event_name == 'push' &&
-        contains(fromJson('["develop","infra/#6-cicd"]'), github.ref_name)
+        contains(fromJson('["develop"]'), github.ref_name)
       )
     runs-on: ubuntu-latest
     permissions:
