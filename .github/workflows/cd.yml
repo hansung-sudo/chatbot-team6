@@ -1,0 +1,131 @@
+name: CD Deploy
+
+on:
+  push:
+    branches:
+      - develop
+  pull_request:
+    branches:
+      - develop
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "GHCR image tag to deploy"
+        required: false
+        default: "latest"
+
+concurrency:
+  group: cd-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event_name == 'push' &&
+        contains(fromJson('["develop"]'), github.ref_name)
+      )
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Set Deploy Image
+        id: image
+        shell: bash
+        run: |
+          IMAGE_REPO="ghcr.io/${GITHUB_REPOSITORY,,}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ inputs.image_tag }}" ]; then
+            IMAGE_TAG="${{ inputs.image_tag }}"
+          elif [ "${{ github.event_name }}" = "push" ]; then
+            IMAGE_TAG="${{ github.sha }}"
+          else
+            IMAGE_TAG="latest"
+          fi
+
+          echo "repo=${IMAGE_REPO}" >> "$GITHUB_OUTPUT"
+          echo "tag=${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
+          echo "ref=${IMAGE_REPO}:${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for Image in GHCR
+        if: github.event_name != 'workflow_dispatch'
+        shell: bash
+        run: |
+          echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io \
+            -u "${{ secrets.GHCR_USERNAME }}" --password-stdin
+
+          for i in $(seq 1 40); do
+            if docker manifest inspect "${{ steps.image.outputs.ref }}" >/dev/null 2>&1; then
+              echo "Image found: ${{ steps.image.outputs.ref }}"
+              exit 0
+            fi
+            echo "Waiting for image: ${{ steps.image.outputs.ref }} (attempt $i/40)"
+            sleep 10
+          done
+
+          echo "Timed out waiting for image: ${{ steps.image.outputs.ref }}"
+          exit 1
+
+      - name: Deploy on Remote Server
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ secrets.DEPLOY_PORT || '22' }}
+          script: |
+            set -e
+
+            if [ -z "${{ secrets.DEPLOY_ENV_FILE }}" ]; then
+              echo "Missing required secret: DEPLOY_ENV_FILE"
+              exit 1
+            fi
+
+            mkdir -p "${{ secrets.DEPLOY_PATH }}"
+            cd "${{ secrets.DEPLOY_PATH }}"
+
+            cat > docker-compose.prod.yml <<'EOF'
+            services:
+              chatbot:
+                image: ${{ steps.image.outputs.ref }}
+                container_name: chatbot
+                restart: unless-stopped
+                ports:
+                  - "8001:8000"
+                env_file:
+                  - .env
+                environment:
+                  DB_PATH: /data/chatbot.db
+                volumes:
+                  - chatbot-data:/data
+                pull_policy: always
+
+            volumes:
+              chatbot-data:
+            EOF
+
+            cat > .env <<'EOF'
+            ${{ secrets.DEPLOY_ENV_FILE }}
+            EOF
+
+            echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io \
+              -u "${{ secrets.GHCR_USERNAME }}" --password-stdin
+
+            if docker compose version >/dev/null 2>&1; then
+              docker compose -f docker-compose.prod.yml pull
+              docker compose -f docker-compose.prod.yml up -d --remove-orphans
+              docker compose -f docker-compose.prod.yml ps
+            elif docker-compose version >/dev/null 2>&1; then
+              docker-compose -f docker-compose.prod.yml pull
+              docker-compose -f docker-compose.prod.yml up -d --remove-orphans
+              docker-compose -f docker-compose.prod.yml ps
+            else
+              echo "docker compose or docker-compose is required on remote server."
+              exit 1
+            fi

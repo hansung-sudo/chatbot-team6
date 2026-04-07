@@ -1,11 +1,19 @@
 import sqlite3
 import os
 
-# 데이터베이스 파일 경로 (프로젝트 루트에 저장)
-DB_PATH = os.path.join(os.path.dirname(__file__), 'chatbot.db')
+# 데이터베이스 파일 경로: 환경변수로 오버라이드 가능
+DEFAULT_DB_PATH = os.path.join(os.path.dirname(__file__), 'chatbot.db')
+DB_PATH = os.getenv('DB_PATH', DEFAULT_DB_PATH)
+
+
+def ensure_db_directory():
+    db_dir = os.path.dirname(DB_PATH)
+    if db_dir:
+        os.makedirs(db_dir, exist_ok=True)
 
 def create_database():
     """데이터베이스 및 테이블 생성"""
+    ensure_db_directory()
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
@@ -21,18 +29,37 @@ def create_database():
 
 def insert_sample_data():
     """샘플 데이터 삽입 예시"""
+    ensure_db_directory()
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
     # 샘플 사용자 삽입
     cursor.execute("INSERT OR IGNORE INTO Users (username, email) VALUES (?, ?)", ('test_user', 'test@example.com'))
 
-    # 샘플 대화 삽입
-    cursor.execute("INSERT INTO Conversations (user_id, session_id) VALUES (?, ?)", (1, 'session_001'))
+    # 샘플 대화 삽입 (중복 실행 안전)
+    cursor.execute(
+        "INSERT OR IGNORE INTO Conversations (user_id, session_id) VALUES (?, ?)",
+        (1, 'session_001')
+    )
+    cursor.execute("SELECT conversation_id FROM Conversations WHERE session_id = ?", ('session_001',))
+    row = cursor.fetchone()
+    if row is None:
+        conn.close()
+        raise RuntimeError("샘플 대화를 찾을 수 없습니다.")
+    conversation_id = row[0]
 
-    # 샘플 메시지 삽입
-    cursor.execute("INSERT INTO Messages (conversation_id, sender, content) VALUES (?, ?, ?)", (1, 'user', '안녕하세요!'))
-    cursor.execute("INSERT INTO Messages (conversation_id, sender, content) VALUES (?, ?, ?)", (1, 'bot', '안녕하세요! 무엇을 도와드릴까요?'))
+    # 샘플 메시지 삽입 (초기 1회만)
+    cursor.execute("SELECT COUNT(*) FROM Messages WHERE conversation_id = ?", (conversation_id,))
+    message_count = cursor.fetchone()[0]
+    if message_count == 0:
+        cursor.execute(
+            "INSERT INTO Messages (conversation_id, sender, content) VALUES (?, ?, ?)",
+            (conversation_id, 'user', '안녕하세요!')
+        )
+        cursor.execute(
+            "INSERT INTO Messages (conversation_id, sender, content) VALUES (?, ?, ?)",
+            (conversation_id, 'bot', '안녕하세요! 무엇을 도와드릴까요?')
+        )
 
     conn.commit()
     conn.close()
@@ -40,6 +67,7 @@ def insert_sample_data():
 
 def query_messages(conversation_id):
     """특정 대화의 메시지 조회 예시"""
+    ensure_db_directory()
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
@@ -55,9 +83,5 @@ def query_messages(conversation_id):
 
 if __name__ == "__main__":
     create_database()
-    insert_sample_data()
-
-    # 조회 예시
-    messages = query_messages(1)
-    for msg in messages:
-        print(f"{msg[0]}: {msg[1]} ({msg[2]})")
+    if os.getenv("INSERT_SAMPLE_DATA", "false").lower() in {"1", "true", "yes"}:
+        insert_sample_data()

@@ -1,5 +1,10 @@
 // 기본 설정
-const DEFAULT_STORAGE_API_BASE_URL = 'http://localhost:8000';
+const DEFAULT_STORAGE_API_BASE_URL = (() => {
+    if (typeof window !== 'undefined' && window.location && window.location.origin && window.location.origin !== 'null') {
+        return window.location.origin;
+    }
+    return 'http://localhost:8000';
+})();
 
 // DOM 요소들
 const chatMessages = document.getElementById('chatMessages');
@@ -43,6 +48,7 @@ async function resolveStorageApiBaseUrl(preferredUrl) {
     const candidates = [
         normalizeBaseUrl(preferredUrl),
         normalizeBaseUrl(DEFAULT_STORAGE_API_BASE_URL),
+        normalizeBaseUrl(typeof window !== 'undefined' ? window.location?.origin : ''),
         'http://127.0.0.1:8000',
         'http://localhost:8000',
         'http://127.0.0.1:8004',
@@ -250,6 +256,31 @@ async function saveSingleMessageToDB(conversationId, sender, content, messageTyp
     }
 }
 
+async function generateAiReply(conversationId, userMessage) {
+    const response = await fetch(`${storageApiBaseUrl}/chat/reply`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            conversation_id: conversationId,
+            user_message: userMessage,
+        }),
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`AI 응답 생성 실패: ${response.status} ${errorText}`);
+    }
+
+    const data = await response.json();
+    const answer = data?.reply?.trim();
+    if (!answer) {
+        throw new Error('AI 응답이 비어 있습니다.');
+    }
+    return answer;
+}
+
 async function selectConversation(id) {
     currentConversationId = id;
     chatMessages.innerHTML = '';
@@ -375,7 +406,10 @@ chatForm.addEventListener('submit', async (e) => {
         await saveSingleMessageToDB(currentConversationId, 'user', message);
         await refreshConversationList();
 
-        renderMessage('AI 답변 기능은 현재 준비 중입니다.', 'bot');
+        const aiReply = await generateAiReply(currentConversationId, message);
+        renderMessage(aiReply, 'bot');
+        await saveSingleMessageToDB(currentConversationId, 'bot', aiReply);
+        await refreshConversationList();
     } catch (error) {
         renderMessage(`오류 발생: ${error.message}`, 'bot');
     } finally {
@@ -393,8 +427,15 @@ messageInput.addEventListener('input', (e) => {
 
 messageInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
+        if (e.isComposing || e.keyCode === 229) {
+            return;
+        }
         e.preventDefault();
-        chatForm.dispatchEvent(new Event('submit'));
+        if (typeof chatForm.requestSubmit === 'function') {
+            chatForm.requestSubmit();
+        } else {
+            chatForm.dispatchEvent(new Event('submit'));
+        }
     }
 });
 
