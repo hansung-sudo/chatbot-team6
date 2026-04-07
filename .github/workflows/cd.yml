@@ -112,18 +112,18 @@ jobs:
             ${{ secrets.DEPLOY_ENV_FILE }}
             EOF
 
+            echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io \
+              -u "${{ secrets.GHCR_USERNAME }}" --password-stdin
+
             if docker compose version >/dev/null 2>&1; then
-              COMPOSE_CMD="docker compose"
+              docker compose -f docker-compose.prod.yml pull
+              docker compose -f docker-compose.prod.yml up -d --remove-orphans
+              docker compose -f docker-compose.prod.yml ps
             elif docker-compose version >/dev/null 2>&1; then
-              COMPOSE_CMD="docker-compose"
+              docker-compose -f docker-compose.prod.yml pull
+              docker-compose -f docker-compose.prod.yml up -d --remove-orphans
+              docker-compose -f docker-compose.prod.yml ps
             else
               echo "docker compose or docker-compose is required on remote server."
               exit 1
             fi
-
-            echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io \
-              -u "${{ secrets.GHCR_USERNAME }}" --password-stdin
-
-            ${COMPOSE_CMD} -f docker-compose.prod.yml pull
-            ${COMPOSE_CMD} -f docker-compose.prod.yml up -d --remove-orphans
-            ${COMPOSE_CMD} -f docker-compose.prod.yml ps
