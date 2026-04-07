@@ -3,7 +3,9 @@ name: CD Deploy
 on:
   push:
     branches:
-      - "infra/#6-cicd"
+      - develop
+  pull_request:
+    branches:
       - develop
   workflow_dispatch:
     inputs:
