@@ -51,6 +51,9 @@ class ChatReplyRequest(BaseModel):
     conversation_id: int
     user_message: str
 
+class ConversationTitleRequest(BaseModel):
+    first_question: str
+
 # --- 데이터베이스 유틸리티 함수 ---
 
 def get_db_connection():
@@ -148,6 +151,53 @@ def generate_ai_reply_from_env(conversation_id: int, latest_user_message: str) -
         raise HTTPException(status_code=502, detail="OpenAI 응답이 비어 있습니다.")
     return reply
 
+def _clean_generated_title(title: str) -> str:
+    cleaned = (title or "").strip()
+    cleaned = cleaned.replace("\n", " ").replace("\r", " ")
+    cleaned = cleaned.strip(" \"'`")
+    for prefix in ("제목:", "타이틀:", "Title:", "title:"):
+        if cleaned.startswith(prefix):
+            cleaned = cleaned[len(prefix):].strip()
+    return cleaned
+
+def generate_conversation_title_from_first_question(first_question: str) -> str:
+    api_key = os.getenv("OPENAI_API_KEY", "").strip()
+    if not api_key:
+        raise HTTPException(status_code=500, detail="서버에 OPENAI_API_KEY가 설정되지 않았습니다.")
+
+    question = (first_question or "").strip()
+    if not question:
+        raise HTTPException(status_code=400, detail="first_question이 비어 있습니다.")
+
+    model_name = os.getenv("TITLE_MODEL_NAME", os.getenv("MODEL_NAME", "gpt-4o-mini")).strip() or "gpt-4o-mini"
+    client = OpenAI(api_key=api_key)
+    response = client.chat.completions.create(
+        model=model_name,
+        temperature=0.2,
+        max_tokens=24,
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "You create short Korean conversation titles. "
+                    "Return only the title, without quotes, numbering, or explanations. "
+                    "Keep it under 20 characters when possible."
+                ),
+            },
+            {
+                "role": "user",
+                "content": f"첫 질문: {question}\n이 대화를 대표하는 짧은 제목을 만들어줘.",
+            },
+        ],
+    )
+
+    raw_title = (response.choices[0].message.content or "").strip() if response.choices else ""
+    title = _clean_generated_title(raw_title)
+    if not title:
+        raise HTTPException(status_code=502, detail="대화 제목 생성 결과가 비어 있습니다.")
+
+    return title
+
 # --- API 엔드포인트 ---
 
 @app.post("/chat/save", summary="대화 내역 세트 저장")
@@ -198,6 +248,17 @@ def chat_reply(request: ChatReplyRequest):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"AI 응답 생성 중 오류 발생: {str(e)}")
+
+@app.post("/chat/title", summary="첫 질문 기반 대화 제목 생성")
+def chat_title(request: ConversationTitleRequest):
+    """첫 질문을 기반으로 짧은 대화 제목을 생성합니다."""
+    try:
+        title = generate_conversation_title_from_first_question(request.first_question)
+        return {"title": title}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"대화 제목 생성 중 오류 발생: {str(e)}")
 
 @app.get("/conversations", summary="대화 목록 조회")
 def get_conversations():

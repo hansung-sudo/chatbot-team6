@@ -3,6 +3,7 @@ name: CD Deploy
 on:
   push:
     branches:
+      - feat/#8-title-generation
       - develop
   pull_request:
     branches:
