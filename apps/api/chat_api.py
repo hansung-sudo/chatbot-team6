@@ -17,8 +17,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 데이터베이스 경로: 환경변수로 오버라이드 가능
-DEFAULT_DB_PATH = os.path.join(os.path.dirname(__file__), '..', '..', 'chatbot.db')
+DEFAULT_DB_PATH = os.path.join(os.path.dirname(__file__), "..", "..", "chatbot.db")
 DB_PATH = os.getenv("DB_PATH", DEFAULT_DB_PATH)
 
 
@@ -30,34 +29,59 @@ def ensure_db_directory() -> None:
 
 ensure_db_directory()
 
-# --- Pydantic 모델 (데이터 규격) ---
+
+# --- Pydantic models ---
 
 class ChatSaveRequest(BaseModel):
     conversation_id: int
     user_message: str
-    ai_response: str  # 프론트엔드에서 생성된 답변을 받아옵니다.
+    ai_response: str
+
 
 class MessageRequest(BaseModel):
     conversation_id: int
-    sender: str  # "user" or "bot"
+    sender: str
     content: str
     message_type: str = "text"
+
 
 class ConversationCreateRequest(BaseModel):
     user_id: int | None = None
     session_id: str | None = None
 
+
+class ConversationTitleUpdateRequest(BaseModel):
+    title: str
+
+
 class ChatReplyRequest(BaseModel):
     conversation_id: int
     user_message: str
 
+
 class ConversationTitleRequest(BaseModel):
     first_question: str
 
-# --- 데이터베이스 유틸리티 함수 ---
+
+# --- Database helpers ---
 
 def get_db_connection():
     return sqlite3.connect(DB_PATH)
+
+
+def ensure_conversation_title_column() -> None:
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("PRAGMA table_info(Conversations)")
+    columns = {row[1] for row in cursor.fetchall()}
+    if "title" not in columns:
+        cursor.execute("ALTER TABLE Conversations ADD COLUMN title TEXT")
+        conn.commit()
+    conn.close()
+
+
+ensure_conversation_title_column()
+
 
 def conversation_exists(conversation_id: int) -> bool:
     conn = get_db_connection()
@@ -67,18 +91,31 @@ def conversation_exists(conversation_id: int) -> bool:
     conn.close()
     return exists
 
+
 def create_conversation(user_id: int | None = None, session_id: str | None = None) -> int:
     conn = get_db_connection()
     cursor = conn.cursor()
     real_session_id = session_id or f"session_{uuid.uuid4().hex[:12]}"
     cursor.execute(
         "INSERT INTO Conversations (user_id, session_id) VALUES (?, ?)",
-        (user_id, real_session_id)
+        (user_id, real_session_id),
     )
     conversation_id = cursor.lastrowid
     conn.commit()
     conn.close()
     return conversation_id
+
+
+def set_conversation_title(conversation_id: int, title: str) -> None:
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE Conversations SET title = ? WHERE conversation_id = ?",
+        ((title or "").strip(), conversation_id),
+    )
+    conn.commit()
+    conn.close()
+
 
 def delete_conversation(conversation_id: int):
     conn = get_db_connection()
@@ -90,26 +127,33 @@ def delete_conversation(conversation_id: int):
     conn.close()
     return deleted > 0
 
+
 def save_message(conversation_id: int, sender: str, content: str, message_type: str = "text"):
-    """메시지 한 건을 DB에 저장합니다."""
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("""
+    cursor.execute(
+        """
         INSERT INTO Messages (conversation_id, sender, content, message_type)
         VALUES (?, ?, ?, ?)
-    """, (conversation_id, sender, content, message_type))
+        """,
+        (conversation_id, sender, content, message_type),
+    )
     conn.commit()
     conn.close()
+
 
 def get_conversation_messages_for_ai(conversation_id: int):
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("""
+    cursor.execute(
+        """
         SELECT sender, content
         FROM Messages
         WHERE conversation_id = ?
         ORDER BY timestamp ASC, message_id ASC
-    """, (conversation_id,))
+        """,
+        (conversation_id,),
+    )
     rows = cursor.fetchall()
     conn.close()
 
@@ -118,6 +162,7 @@ def get_conversation_messages_for_ai(conversation_id: int):
         role = "assistant" if sender == "bot" else "user"
         messages.append({"role": role, "content": content})
     return messages
+
 
 def generate_ai_reply_from_env(conversation_id: int, latest_user_message: str) -> str:
     api_key = os.getenv("OPENAI_API_KEY", "").strip()
@@ -151,14 +196,16 @@ def generate_ai_reply_from_env(conversation_id: int, latest_user_message: str) -
         raise HTTPException(status_code=502, detail="OpenAI 응답이 비어 있습니다.")
     return reply
 
+
 def _clean_generated_title(title: str) -> str:
     cleaned = (title or "").strip()
     cleaned = cleaned.replace("\n", " ").replace("\r", " ")
-    cleaned = cleaned.strip(" \"'`")
+    cleaned = cleaned.strip(' "\'`')
     for prefix in ("제목:", "타이틀:", "Title:", "title:"):
         if cleaned.startswith(prefix):
             cleaned = cleaned[len(prefix):].strip()
     return cleaned
+
 
 def generate_conversation_title_from_first_question(first_question: str) -> str:
     api_key = os.getenv("OPENAI_API_KEY", "").strip()
@@ -195,34 +242,26 @@ def generate_conversation_title_from_first_question(first_question: str) -> str:
     title = _clean_generated_title(raw_title)
     if not title:
         raise HTTPException(status_code=502, detail="대화 제목 생성 결과가 비어 있습니다.")
-
     return title
 
-# --- API 엔드포인트 ---
+
+# --- API routes ---
 
 @app.post("/chat/save", summary="대화 내역 세트 저장")
 def save_chat_history(request: ChatSaveRequest):
-    """
-    [핵심 기능] 
-    프론트엔드에서 보낸 '사용자 질문'과 'AI 답변'을 동시에 DB에 기록합니다.
-    """
     try:
         if not conversation_exists(request.conversation_id):
             raise HTTPException(status_code=404, detail="conversation_id가 존재하지 않습니다.")
 
-        # 1. 사용자 메시지 저장
         save_message(request.conversation_id, "user", request.user_message)
-        
-        # 2. AI 응답 저장
         save_message(request.conversation_id, "bot", request.ai_response)
-        
         return {"status": "success", "message": "대화 내역이 성공적으로 저장되었습니다."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"저장 중 오류 발생: {str(e)}")
 
+
 @app.post("/chat/message", summary="단일 메시지 저장")
 def save_single_message(request: MessageRequest):
-    """사용자/봇 메시지 한 건을 저장합니다."""
     if request.sender not in ["user", "bot"]:
         raise HTTPException(status_code=400, detail="sender는 'user' 또는 'bot'이어야 합니다.")
 
@@ -235,9 +274,9 @@ def save_single_message(request: MessageRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"메시지 저장 중 오류 발생: {str(e)}")
 
+
 @app.post("/chat/reply", summary="AI 응답 생성")
 def chat_reply(request: ChatReplyRequest):
-    """DB 대화 이력과 서버 .env 키를 사용해 AI 응답을 생성합니다."""
     if not conversation_exists(request.conversation_id):
         raise HTTPException(status_code=404, detail="conversation_id가 존재하지 않습니다.")
 
@@ -249,9 +288,9 @@ def chat_reply(request: ChatReplyRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"AI 응답 생성 중 오류 발생: {str(e)}")
 
+
 @app.post("/chat/title", summary="첫 질문 기반 대화 제목 생성")
 def chat_title(request: ConversationTitleRequest):
-    """첫 질문을 기반으로 짧은 대화 제목을 생성합니다."""
     try:
         title = generate_conversation_title_from_first_question(request.first_question)
         return {"title": title}
@@ -260,15 +299,29 @@ def chat_title(request: ConversationTitleRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"대화 제목 생성 중 오류 발생: {str(e)}")
 
+
+@app.put("/conversations/{conversation_id}/title", summary="대화 제목 저장")
+def update_conversation_title(conversation_id: int, request: ConversationTitleUpdateRequest):
+    if not conversation_exists(conversation_id):
+        raise HTTPException(status_code=404, detail="conversation_id가 존재하지 않습니다.")
+
+    try:
+        set_conversation_title(conversation_id, request.title)
+        return {"status": "success", "title": request.title}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"대화 제목 저장 중 오류 발생: {str(e)}")
+
+
 @app.get("/conversations", summary="대화 목록 조회")
 def get_conversations():
-    """사이드바용 대화 목록을 최신순으로 가져옵니다."""
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("""
+    cursor.execute(
+        """
         SELECT
             c.conversation_id,
             c.start_time,
+            c.title,
             (
                 SELECT m.content
                 FROM Messages m
@@ -283,26 +336,34 @@ def get_conversations():
             ) AS message_count
         FROM Conversations c
         ORDER BY c.start_time DESC, c.conversation_id DESC
-    """)
+        """
+    )
     rows = cursor.fetchall()
     conn.close()
 
     conversations = []
-    for row in rows:
-        conversation_id, start_time, first_user_message, message_count = row
-        title = (first_user_message[:30] + "...") if first_user_message and len(first_user_message) > 30 else (first_user_message or f"대화 #{conversation_id}")
-        conversations.append({
-            "conversation_id": conversation_id,
-            "title": title,
-            "start_time": start_time,
-            "message_count": message_count,
-        })
+    for conversation_id, start_time, stored_title, first_user_message, message_count in rows:
+        title = (stored_title or "").strip()
+        if not title:
+            title = (
+                first_user_message[:30] + "..."
+                if first_user_message and len(first_user_message) > 30
+                else (first_user_message or f"대화 #{conversation_id}")
+            )
+        conversations.append(
+            {
+                "conversation_id": conversation_id,
+                "title": title,
+                "start_time": start_time,
+                "message_count": message_count,
+            }
+        )
 
     return {"conversations": conversations}
 
+
 @app.post("/conversations", summary="대화 생성")
 def create_conversation_api(request: ConversationCreateRequest):
-    """새 대화를 만들고 conversation_id를 반환합니다."""
     try:
         conversation_id = create_conversation(request.user_id, request.session_id)
         return {"conversation_id": conversation_id}
@@ -311,9 +372,9 @@ def create_conversation_api(request: ConversationCreateRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"대화 생성 중 오류 발생: {str(e)}")
 
+
 @app.delete("/conversations/{conversation_id}", summary="대화 삭제")
 def delete_conversation_api(conversation_id: int):
-    """대화와 연결된 메시지를 함께 삭제합니다."""
     if not conversation_exists(conversation_id):
         raise HTTPException(status_code=404, detail="conversation_id가 존재하지 않습니다.")
 
@@ -325,27 +386,34 @@ def delete_conversation_api(conversation_id: int):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"대화 삭제 중 오류 발생: {str(e)}")
 
+
 @app.get("/chat/messages/{conversation_id}", summary="대화 내역 조회")
 def retrieve_messages(conversation_id: int):
-    """특정 대화방의 모든 메시지를 시간순으로 가져옵니다."""
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("""
+    cursor.execute(
+        """
         SELECT message_id, sender, content, timestamp FROM Messages
         WHERE conversation_id = ?
         ORDER BY timestamp ASC
-    """, (conversation_id,))
+        """,
+        (conversation_id,),
+    )
     messages = cursor.fetchall()
     conn.close()
-    
-    return {"messages": [
-        {"id": msg[0], "sender": msg[1], "content": msg[2], "time": msg[3]} 
-        for msg in messages
-    ]}
+
+    return {
+        "messages": [
+            {"id": msg[0], "sender": msg[1], "content": msg[2], "time": msg[3]}
+            for msg in messages
+        ]
+    }
+
 
 @app.get("/health", summary="서버 상태 체크")
 def health_check():
     return {"status": "OK", "mode": "storage-only"}
+
 
 WEB_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "web", "chatbot"))
 
