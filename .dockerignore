@@ -1,0 +1,16 @@
+.git
+.github
+.env
+.env.*
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+*.db
+*.sqlite
+*.sqlite3
+.venv
+venv
+dist
+build
+node_modules

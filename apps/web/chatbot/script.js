@@ -1,6 +1,10 @@
 // 기본 설정
-const DEFAULT_API_URL = '';
-const DEFAULT_STORAGE_API_BASE_URL = 'http://localhost:8000';
+const DEFAULT_STORAGE_API_BASE_URL = (() => {
+    if (typeof window !== 'undefined' && window.location && window.location.origin && window.location.origin !== 'null') {
+        return window.location.origin;
+    }
+    return 'http://localhost:8000';
+})();
 
 // DOM 요소들
 const chatMessages = document.getElementById('chatMessages');
@@ -8,7 +12,6 @@ const chatForm = document.getElementById('chatForm');
 const messageInput = document.getElementById('messageInput');
 const sendBtn = document.getElementById('sendBtn');
 const loadingIndicator = document.getElementById('loadingIndicator');
-const apiUrlInput = document.getElementById('apiUrlInput');
 const storageApiBaseInput = document.getElementById('storageApiBaseInput');
 const newChatBtn = document.getElementById('newChatBtn');
 const conversationList = document.getElementById('conversationList');
@@ -20,7 +23,6 @@ const chatbotWrapper = document.querySelector('.chatbot-wrapper');
 
 // 상태 관리
 let isLoading = false;
-let apiUrl = DEFAULT_API_URL;
 let storageApiBaseUrl = DEFAULT_STORAGE_API_BASE_URL;
 let currentConversationId = null;
 let conversations = []; // [{ conversation_id, title, start_time, message_count }]
@@ -46,6 +48,7 @@ async function resolveStorageApiBaseUrl(preferredUrl) {
     const candidates = [
         normalizeBaseUrl(preferredUrl),
         normalizeBaseUrl(DEFAULT_STORAGE_API_BASE_URL),
+        normalizeBaseUrl(typeof window !== 'undefined' ? window.location?.origin : ''),
         'http://127.0.0.1:8000',
         'http://localhost:8000',
         'http://127.0.0.1:8004',
@@ -77,7 +80,6 @@ function closeSidebar() {
 }
 
 function saveSettings() {
-    localStorage.setItem('chatbot_api_url', apiUrl);
     localStorage.setItem('chatbot_storage_api_base_url', storageApiBaseUrl);
 }
 
@@ -254,6 +256,30 @@ async function saveSingleMessageToDB(conversationId, sender, content, messageTyp
     }
 }
 
+async function generateAiReply(conversationId, userMessage) {
+    const response = await fetch(`${storageApiBaseUrl}/chat/reply`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            conversation_id: conversationId,
+            user_message: userMessage,
+        }),
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`AI 응답 생성 실패: ${response.status} ${errorText}`);
+    }
+
+    const data = await response.json();
+    const answer = data?.reply?.trim();
+    if (!answer) {
+        throw new Error('AI 응답이 비어 있습니다.');
+    }
+    return answer;
+}
 async function selectConversation(id) {
     currentConversationId = id;
     chatMessages.innerHTML = '';
@@ -303,46 +329,10 @@ async function refreshConversationList() {
     renderConversationList();
 }
 
-async function sendMessageToAI(message, conversationId) {
-    if (!apiUrl) {
-        throw new Error('AI API URL이 비어 있습니다. 설정에서 AI 서버 URL을 입력해주세요.');
-    }
-
-    let history = [];
-    try {
-        history = await buildConversationHistoryForAI(conversationId, message);
-    } catch (error) {
-        console.warn('맥락 히스토리 조회 실패. 단일 메시지로 전송합니다.', error);
-    }
-
-    const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-            message,
-            conversation_id: conversationId,
-            history,
-        }),
-    });
-
-    if (!response.ok) {
-        throw new Error(`AI API 오류: ${response.status} (현재 URL: ${apiUrl})`);
-    }
-
-    const data = await response.json();
-    return data.response || data.text || data.message || '응답을 받을 수 없습니다.';
-}
-
 window.addEventListener('DOMContentLoaded', async () => {
-    const savedApiUrl = localStorage.getItem('chatbot_api_url');
     const savedStorageApiBaseUrl = localStorage.getItem('chatbot_storage_api_base_url');
 
-    apiUrl = savedApiUrl || DEFAULT_API_URL;
     storageApiBaseUrl = normalizeBaseUrl(savedStorageApiBaseUrl || DEFAULT_STORAGE_API_BASE_URL);
-
-    apiUrlInput.value = apiUrl;
     storageApiBaseInput.value = storageApiBaseUrl;
 
     sidebarOpen = localStorage.getItem('chatbot_sidebar_open') === 'true';
@@ -368,11 +358,6 @@ window.addEventListener('DOMContentLoaded', async () => {
     } catch (error) {
         renderMessage(`초기화 오류: ${error.message}. Storage API 서버를 먼저 실행해주세요.`, 'bot');
     }
-});
-
-apiUrlInput.addEventListener('change', (e) => {
-    apiUrl = e.target.value || DEFAULT_API_URL;
-    saveSettings();
 });
 
 storageApiBaseInput.addEventListener('change', (e) => {
@@ -419,10 +404,9 @@ chatForm.addEventListener('submit', async (e) => {
         await saveSingleMessageToDB(currentConversationId, 'user', message);
         await refreshConversationList();
 
-        const botResponse = await sendMessageToAI(message, currentConversationId);
-        renderMessage(botResponse, 'bot');
-
-        await saveSingleMessageToDB(currentConversationId, 'bot', botResponse);
+        const aiReply = await generateAiReply(currentConversationId, message);
+        renderMessage(aiReply, 'bot');
+        await saveSingleMessageToDB(currentConversationId, 'bot', aiReply);
         await refreshConversationList();
     } catch (error) {
         renderMessage(`오류 발생: ${error.message}`, 'bot');
@@ -441,8 +425,15 @@ messageInput.addEventListener('input', (e) => {
 
 messageInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
+        if (e.isComposing || e.keyCode === 229) {
+            return;
+        }
         e.preventDefault();
-        chatForm.dispatchEvent(new Event('submit'));
+        if (typeof chatForm.requestSubmit === 'function') {
+            chatForm.requestSubmit();
+        } else {
+            chatForm.dispatchEvent(new Event('submit'));
+        }
     }
 });
 
