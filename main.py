@@ -31,6 +31,7 @@ conversation = ConversationChain(
 
 def main():
     print("챗봇을 시작합니다. 'quit' 입력 시 종료됩니다.")
+    print("Bot: 안녕하세요! 무엇을 도와드릴까요?")
     while True:
         user_input = input("You: ")
         if user_input.lower() == 'quit':
