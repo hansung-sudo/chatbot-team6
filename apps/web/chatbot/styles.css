@@ -459,7 +459,7 @@ body {
     .container {
         flex-direction: column;
         padding: 10px;
-        gap: 0;
+        gap: 10;
     }
 
     .sidebar {
