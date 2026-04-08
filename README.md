@@ -1,75 +1,47 @@
 # Chatbot Team 6
 
-FastAPI, SQLite, 그리고 OpenAI를 사용하는 챗봇 서비스입니다.  
-웹 UI와 API를 하나의 Docker 이미지에서 함께 제공하고, 대화 내역은 SQLite에 저장합니다.
+FastAPI + SQLite + OpenAI 기반 챗봇 서비스입니다.
+웹 UI와 API를 하나의 서버에서 제공하며, 대화 내역은 SQLite에 저장됩니다.
 
-## 기술 스택
+## 주요기능
 
-- `Python 3.12`
-- `FastAPI`, `Uvicorn`
-- `LangChain`, `langchain-openai`, `langchain-community`
-- `OpenAI API`
-- `SQLite`
-- `HTML`, `CSS`, `JavaScript`
-- `Docker`, `Docker Compose`
-- `GitHub Actions`
+- 웹 채팅 UI 제공
+- 대화 생성/삭제 및 목록 조회
+- 메시지 저장/조회
+- 저장된 대화 이력을 기반으로 OpenAI 응답 생성
 
-## 아키텍처
+## 프로젝트 메커니즘
 
-```text
-Browser -> FastAPI server
-          -> Static Web UI (/)
-          -> Chat API (/chat/*, /conversations, /health)
-          -> SQLite DB (/data/chatbot.db)
-          -> OpenAI API
+- 브라우저가 FastAPI 서버에 요청을 보냅니다.
+- 서버는 정적 웹 UI를 제공하고, API 요청을 처리합니다.
+- 대화/메시지는 SQLite에 저장됩니다.
+- AI 응답 생성 시 DB 대화 이력을 읽고 OpenAI API를 호출합니다.
+
+## 실행방법
+
+1. 루트 경로에 .env 파일을 생성합니다.
 ```
-
-- 웹 UI: `apps/web/chatbot`
-- API 서버: `apps/api/chat_api.py`
-- 데이터 저장소: SQLite
-- 실행 방식: Docker Compose
-
-## 결과물
-
-- 웹 페이지에서 대화 입력 및 응답 확인 가능
-- 대화 목록, 메시지 저장/조회 가능
-- 서버 `.env` 기반 OpenAI 응답 생성
-- 로컬 실행과 배포 실행을 같은 이미지로 처리
-- 서비스: `https://chatbot.yeoun.org/`
-- API 문서: `https://chatbot.yeoun.org/docs`
-
-## 빠른 시작
-
-1. `.env` 파일을 준비합니다.
-
-```env
 OPENAI_API_KEY=your_openai_api_key_here
 MODEL_NAME=gpt-4o-mini
 DB_PATH=/data/chatbot.db
 ```
-
 2. Docker Compose로 실행합니다.
-
-```bash
+```
 docker compose up -d --build
 ```
+3. 로컬 Python 실행이 필요하면 아래 순서로 실행합니다.
+```
+pip install -r requirements.txt
+python database.py
+uvicorn apps.api.chat_api:app --host 0.0.0.0 --port 8000 --reload
+```
 
-3. 아래 주소에 접속합니다.
+## 접속 주소
 
-- 웹: `http://localhost:8001/`
-- API 문서: `http://localhost:8001/docs`
-- 헬스 체크: `http://localhost:8001/health`
-
-## 배포
-
-- 배포용 설정은 `docker-compose.prod.yml`을 사용하여 CI/CD합니다.
-- SQLite 데이터는 `chatbot-data` 볼륨에 유지됩니다.
-
-## 접속 경로
-
-- 웹: `http://localhost:8001/`
-- API 문서: `http://localhost:8001/docs`
-
-## 라이선스
-
-MIT
+- Docker 실행 시
+    - 웹: http://localhost:8001/
+    - Swagger: http://localhost:8001/docs
+    - Health: http://localhost:8001/health
+- 로컬 Python 실행 시
+    - 웹: http://localhost:8000/
+    - Swagger: http://localhost:8000/docs
