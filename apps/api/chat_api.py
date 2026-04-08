@@ -166,12 +166,16 @@ def get_conversation_messages_for_ai(conversation_id: int):
 
 def generate_ai_reply_from_env(conversation_id: int, latest_user_message: str) -> str:
     api_key = os.getenv("OPENAI_API_KEY", "").strip()
+    MAX_TOKENS = int(os.getenv("MAX_TOKENS", "500"))
+    MAX_USER_INPUT = int(os.getenv("MAX_USER_INPUT", "1000"))
     if not api_key:
         raise HTTPException(status_code=500, detail="서버에 OPENAI_API_KEY가 설정되지 않았습니다.")
 
     model_name = os.getenv("MODEL_NAME", "gpt-4o-mini").strip() or "gpt-4o-mini"
     history = get_conversation_messages_for_ai(conversation_id)
     latest_user_message = (latest_user_message or "").strip()
+    if len(latest_user_message) > MAX_USER_INPUT:
+        raise HTTPException(status_code=400, detail=f"입력이 너무 깁니다! 최대 {MAX_USER_INPUT}자까지 가능합니다.")
 
     if latest_user_message:
         if not history or history[-1].get("role") != "user" or history[-1].get("content") != latest_user_message:
@@ -183,6 +187,7 @@ def generate_ai_reply_from_env(conversation_id: int, latest_user_message: str) -
     client = OpenAI(api_key=api_key)
     response = client.chat.completions.create(
         model=model_name,
+        max_tokens=MAX_TOKENS,
         messages=[
             {
                 "role": "system",
