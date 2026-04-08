@@ -3,7 +3,6 @@ name: CI Build
 on:
   push:
     branches:
-      - feat/#8-title-generation
       - develop
   workflow_dispatch:
 
