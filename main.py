@@ -7,16 +7,16 @@ from langchain.chains import ConversationChain
 # 환경 변수 로드
 load_dotenv()
 
-# OpenAI API 키 설정 (환경 변수에서 가져옴)
-openai_api_key = os.getenv("OPENAI_API_KEY")
-if not openai_api_key:
-    raise ValueError("OPENAI_API_KEY 환경 변수를 설정해주세요.")
+# 환경 변수에서 제한 값 가져오기 (기본값 설정)
+MAX_TOKENS = int(os.getenv("MAX_TOKENS", 500))
+MAX_USER_INPUT = int(os.getenv("MAX_USER_INPUT", 1000))
 
-# ChatOpenAI 모델 초기화
+# ChatOpenAI 모델 초기화 (max_tokens 추가)
 llm = ChatOpenAI(
     openai_api_key=openai_api_key,
-    model_name="gpt-3.5-turbo",  # 또는 gpt-4
-    temperature=0.7
+    model_name="gpt-3.5-turbo",
+    temperature=0.7,
+    max_tokens=MAX_TOKENS  # <--- 이 부분이 추가되었습니다!
 )
 
 # 대화 메모리 초기화
@@ -33,12 +33,22 @@ def main():
     print("챗봇을 시작합니다. 'quit' 입력 시 종료됩니다.")
     while True:
         user_input = input("You: ")
+        
+        # 1. 종료 명령어 체크
         if user_input.lower() == 'quit':
             print("챗봇을 종료합니다.")
             break
-        # 대화 예측
+
+        # 2. [민준님 제안] 입력 글자 수 제한 체크 (글자수 초과 시 아래 로직 건너뜀)
+        if len(user_input) > MAX_USER_INPUT:
+            print(f"\n[시스템] 질문이 너무 깁니다! ({len(user_input)}자)")
+            print(f"최대 {MAX_USER_INPUT}자까지만 입력 가능합니다. 다시 입력해주세요.\n")
+            continue
+            
+        # 3. 대화 예측 및 출력
         response = conversation.predict(input=user_input)
         print(f"Bot: {response}")
 
 if __name__ == "__main__":
     main()
+
