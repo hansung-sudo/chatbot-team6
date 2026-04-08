@@ -20,6 +20,7 @@ const sidebarToggle = document.getElementById('sidebarToggle');
 const closeSidebarBtn = document.getElementById('closeSidebarBtn');
 const sidebar = document.getElementById('sidebar');
 const chatbotWrapper = document.querySelector('.chatbot-wrapper');
+const welcomePanel = document.getElementById('welcomePanel');
 
 // 상태 관리
 let isLoading = false;
@@ -85,6 +86,18 @@ function saveSettings() {
 
 function scrollToBottom() {
     chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+function showWelcomePanel() {
+    if (welcomePanel) {
+        welcomePanel.style.display = 'flex';
+    }
+}
+
+function hideWelcomePanel() {
+    if (welcomePanel) {
+        welcomePanel.style.display = 'none';
+    }
 }
 
 function renderMessage(text, sender) {
@@ -326,6 +339,7 @@ async function updateConversationTitle(conversationId, title) {
 async function selectConversation(id) {
     currentConversationId = id;
     chatMessages.innerHTML = '';
+    hideWelcomePanel();
 
     const selected = conversations.find((conv) => conv.conversation_id === id);
     chatTitle.textContent = selected?.title || `대화 #${id}`;
@@ -362,6 +376,7 @@ async function selectConversation(id) {
 async function startNewConversation() {
     currentConversationId = null;
     chatMessages.innerHTML = '';
+    showWelcomePanel();
     chatTitle.textContent = '새로운 대화';
     renderConversationList();
     messageInput.focus();
@@ -392,10 +407,7 @@ window.addEventListener('DOMContentLoaded', async () => {
         await refreshConversationList();
 
         if (conversations.length === 0) {
-            currentConversationId = null;
-            chatMessages.innerHTML = '';
-            chatTitle.textContent = '새로운 대화';
-            renderConversationList();
+            await startNewConversation();
         } else {
             await selectConversation(conversations[0].conversation_id);
         }
@@ -431,10 +443,7 @@ chatForm.addEventListener('submit', async (e) => {
         return;
     }
 
-    isLoading = true;
-    sendBtn.disabled = true;
-    loadingIndicator.classList.add('active');
-
+        hideWelcomePanel();
     try {
         renderMessage(message, 'user');
         messageInput.value = '';
