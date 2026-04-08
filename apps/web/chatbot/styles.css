@@ -198,6 +198,7 @@ body {
 }
 
 .chatbot-wrapper {
+    position: relative;
     flex: 1;
     width: 100%;
     max-width: 600px;
@@ -233,6 +234,40 @@ body {
 .chat-header .subtitle {
     font-size: 14px;
     opacity: 0.9;
+}
+
+/* 환영 화면 */
+.welcome-panel {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    width: calc(100% - 60px);
+    max-width: 420px;
+    padding: 0;
+    margin: 0;
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    text-align: center;
+    color: #2f3a56;
+    z-index: 1;
+}
+
+.welcome-panel h2 {
+    font-size: 32px;
+    margin-bottom: 8px;
+    color: #3f51b5;
+}
+
+.welcome-panel p {
+    font-size: 16px;
+    opacity: 0.78;
+    line-height: 1.6;
 }
 
 /* 채팅 영역 */
@@ -312,19 +347,24 @@ body {
 
 /* 입력 영역 */
 .chat-input-area {
+    width: 100%;
     padding: 15px 20px;
     background: white;
     border-top: 1px solid #e9ecef;
+    display: flex;
+    flex-direction: column;
 }
 
 .chat-form {
     display: flex;
     gap: 10px;
     align-items: flex-end;
+    width: 100%;
 }
 
 .message-input {
     flex: 1;
+    min-width: 0;
     padding: 12px 16px;
     border: 1px solid #e9ecef;
     border-radius: 24px;
