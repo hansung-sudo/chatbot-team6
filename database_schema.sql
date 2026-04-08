@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS Conversations (
     start_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     end_time TIMESTAMP,
     session_id VARCHAR(255) UNIQUE,
+    title TEXT,
     FOREIGN KEY (user_id) REFERENCES Users(user_id)
 );
 

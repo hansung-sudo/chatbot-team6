@@ -281,6 +281,48 @@ async function generateAiReply(conversationId, userMessage) {
     return answer;
 }
 
+async function generateConversationTitle(firstQuestion) {
+    const response = await fetch(`${storageApiBaseUrl}/chat/title`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            first_question: firstQuestion,
+        }),
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`대화 제목 생성 실패: ${response.status} ${errorText}`);
+    }
+
+    const data = await response.json();
+    const title = data?.title?.trim();
+    if (!title) {
+        throw new Error('대화 제목이 비어 있습니다.');
+    }
+
+    return title;
+}
+
+async function updateConversationTitle(conversationId, title) {
+    const response = await fetch(`${storageApiBaseUrl}/conversations/${conversationId}/title`, {
+        method: 'PUT',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            title,
+        }),
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`대화 제목 저장 실패: ${response.status} ${errorText}`);
+    }
+}
+
 async function selectConversation(id) {
     currentConversationId = id;
     chatMessages.innerHTML = '';
@@ -398,12 +440,24 @@ chatForm.addEventListener('submit', async (e) => {
         messageInput.value = '';
         messageInput.style.height = 'auto';
 
+        const isNewConversation = !currentConversationId;
         if (!currentConversationId) {
             currentConversationId = await createConversation();
         }
 
         // 첫 질문을 즉시 저장해서 사이드바 제목이 사용자 첫 질문으로 반영되게 합니다.
         await saveSingleMessageToDB(currentConversationId, 'user', message);
+
+        if (isNewConversation) {
+            try {
+                const generatedTitle = await generateConversationTitle(message);
+                await updateConversationTitle(currentConversationId, generatedTitle);
+                chatTitle.textContent = generatedTitle;
+            } catch (titleError) {
+                console.warn('대화 제목 생성/저장 실패:', titleError);
+            }
+        }
+
         await refreshConversationList();
 
         const aiReply = await generateAiReply(currentConversationId, message);
